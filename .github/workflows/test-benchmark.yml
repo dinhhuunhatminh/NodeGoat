@@ -35,9 +35,11 @@ jobs:
       - name: Lấy mã nguồn
         uses: actions/checkout@v4
         
-      - name: Cài đặt Trivy
+      - name: Cài đặt Trivy (Bản tải trực tiếp siêu chuẩn)
         run: |
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin v0.48.3
+          wget https://github.com/aquasecurity/trivy/releases/download/v0.48.3/trivy_0.48.3_Linux-64bit.tar.gz
+          tar zxvf trivy_0.48.3_Linux-64bit.tar.gz
+          sudo mv trivy /usr/local/bin/
           
       - name: Chạy Benchmark Trivy
         run: |
