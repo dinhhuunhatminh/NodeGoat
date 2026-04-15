@@ -32,13 +32,11 @@ jobs:
   benchmark_sca:
     runs-on: ubuntu-latest
     steps:
-      - name: Lấy mã nguồn
-        uses: actions/checkout@v4
-        
-      - name: Cài đặt Trivy (Vào thẳng thư mục hiện tại)
+      - uses: actions/checkout@v4
+      - name: Cài đặt Trivy
         run: |
-          # Thêm cờ "-b ." để cài trực tiếp file trivy vào thư mục này, không cần sudo
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b . v0.48.3
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
+          trivy --version
           
       - name: Chạy Benchmark Trivy
         run: |
