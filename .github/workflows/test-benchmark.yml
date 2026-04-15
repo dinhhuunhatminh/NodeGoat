@@ -42,8 +42,8 @@ jobs:
         run: |
           echo "==== BẮT ĐẦU QUÉT SCA (TRIVY) ===="
           START_TIME=$(date +%s)
-          # Gọi trực tiếp file ./trivy vừa tải về
-          ./trivy fs --format json --output sca-report.json . || true
+          # Xóa dấu ./ đi, chỉ gọi trivy thôi
+          trivy fs --format json --output sca-report.json . || true
           END_TIME=$(date +%s)
           echo "Thời gian quét (giây): $((END_TIME - START_TIME))"
           echo "Số lỗi tìm thấy: $(jq '[.Results[]?.Vulnerabilities | length] | add // 0' sca-report.json)"
