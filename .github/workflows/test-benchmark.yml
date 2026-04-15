@@ -35,17 +35,17 @@ jobs:
       - name: Lấy mã nguồn
         uses: actions/checkout@v4
         
-      - name: Cài đặt Trivy (Bản tải trực tiếp siêu chuẩn)
+      - name: Cài đặt Trivy (Vào thẳng thư mục hiện tại)
         run: |
-          wget https://github.com/aquasecurity/trivy/releases/download/v0.48.3/trivy_0.48.3_Linux-64bit.tar.gz
-          tar zxvf trivy_0.48.3_Linux-64bit.tar.gz
-          sudo mv trivy /usr/local/bin/
+          # Thêm cờ "-b ." để cài trực tiếp file trivy vào thư mục này, không cần sudo
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b . v0.48.3
           
       - name: Chạy Benchmark Trivy
         run: |
           echo "==== BẮT ĐẦU QUÉT SCA (TRIVY) ===="
           START_TIME=$(date +%s)
-          trivy fs --format json --output sca-report.json . || true
+          # Gọi trực tiếp file ./trivy vừa tải về
+          ./trivy fs --format json --output sca-report.json . || true
           END_TIME=$(date +%s)
           echo "Thời gian quét (giây): $((END_TIME - START_TIME))"
           echo "Số lỗi tìm thấy: $(jq '[.Results[]?.Vulnerabilities | length] | add // 0' sca-report.json)"
