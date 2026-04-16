@@ -4,30 +4,36 @@ on:
   workflow_dispatch: # Cho phép chạy thủ công
 
 jobs:
-  benchmark_sast:
+  benchmark_tools:
     runs-on: ubuntu-latest
     steps:
-      - name: Lấy mã nguồn
-        uses: actions/checkout@v4
-      
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-          
-      - name: Cài đặt Semgrep
-        run: pip install semgrep
-        
-      - name: Chạy Benchmark Semgrep
+      - uses: actions/checkout@v4
+
+      # 1. Benchmark Njsscan (SAST - Nhanh)
+      - name: Njsscan Check
         run: |
-          echo "==== BẮT ĐẦU QUÉT SAST (SEMGREP) ===="
-          START_TIME=$(date +%s)
-          # Thêm cờ --exclude node_modules để bỏ qua thư viện bên thứ 3
-          semgrep scan --config auto --exclude "node_modules" --json -o sast-report.json || true
-          END_TIME=$(date +%s)
-          echo "Thời gian quét (giây): $((END_TIME - START_TIME))"
-          echo "Số lỗi tìm thấy: $(jq '.results | length' sast-report.json)"
-          echo "======================================="
+          pip install njsscan
+          time njsscan . --sarif -o results.sarif || true
+
+      # 2. Benchmark Snyk (SCA - Chi tiết)
+      - name: Snyk Check
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        continue-on-error: true
+
+      # 3. Benchmark Trivy (SCA - Toàn diện)
+      - name: Trivy Check
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          format: 'table'
+
+      # 4. Benchmark SonarCloud (SAST - Sâu)
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
   benchmark_sca:
     runs-on: ubuntu-latest
