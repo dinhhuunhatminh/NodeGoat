@@ -37,7 +37,7 @@ jobs:
           echo "==== BẮT ĐẦU QUÉT DAST (NUCLEI_FAST) ===="
           # Tải bản chạy trực tiếp (Binary) của Nuclei
           wget -q https://github.com/projectdiscovery/nuclei/releases/download/v3.1.9/nuclei_3.1.9_linux_amd64.zip
-          unzip -q nuclei_3.1.9_linux_amd64.zip
+          unzip -o -q nuclei_3.1.9_linux_amd64.zip
           
           START_TIME=$(date +%s)
           ./nuclei -u http://localhost:5006 -jsonl -o nuclei-report.jsonl || true
