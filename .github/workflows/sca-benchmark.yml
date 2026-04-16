@@ -1,0 +1,81 @@
+name: Benchmark 4 Công Cụ SCA
+
+on:
+  workflow_dispatch: # Cho phép chạy thủ công để lấy số liệu
+
+jobs:
+  benchmark_sca:
+    name: Benchmark Nhóm SCA (Thư viện)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Lấy mã nguồn
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js (Cho npm audit và snyk)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Cài đặt tập trung các công cụ CLI
+      - name: Cài đặt Trivy và Snyk
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
+          npm install -g snyk
+          # Cài đặt dependencies để npm audit hoạt động chính xác
+          npm install --package-lock-only || true
+
+      # 1. TRIVY STANDARD (Chỉ quét lỗ hổng thư viện - vuln)
+      - name: 1. Benchmark Trivy Standard
+        run: |
+          echo "==== BẮT ĐẦU QUÉT SCA (TRIVY_STANDARD) ===="
+          START_TIME=$(date +%s)
+          
+          trivy fs --scanners vuln --format json --output trivy-std.json . || true
+          
+          END_TIME=$(date +%s)
+          echo "Thời gian quét (giây): $((END_TIME - START_TIME))"
+          echo "Số lỗi tìm thấy: $(jq '[.Results[]?.Vulnerabilities | length] | add // 0' trivy-std.json)"
+          echo "=========================================="
+
+      # 2. TRIVY DEEP (Quét vuln + lộ lọt secret + lỗi cấu hình)
+      - name: 2. Benchmark Trivy Deep
+        run: |
+          echo "==== BẮT ĐẦU QUÉT SCA (TRIVY_DEEP) ===="
+          START_TIME=$(date +%s)
+          
+          trivy fs --scanners vuln,secret,misconfig --format json --output trivy-deep.json . || true
+          
+          END_TIME=$(date +%s)
+          echo "Thời gian quét (giây): $((END_TIME - START_TIME))"
+          # Cú pháp jq cộng gộp cả Vulnerabilities, Secrets và Misconfigurations
+          echo "Số lỗi tìm thấy: $(jq '[.Results[]? | (.Vulnerabilities // []) + (.Misconfigurations // []) + (.Secrets // []) | length] | add // 0' trivy-deep.json)"
+          echo "========================================"
+
+      # 3. NPM AUDIT (Tích hợp sẵn của Node.js)
+      - name: 3. Benchmark NPM Audit
+        run: |
+          echo "==== BẮT ĐẦU QUÉT SCA (NPM_AUDIT) ===="
+          START_TIME=$(date +%s)
+          
+          npm audit --json > npm-audit.json || true
+          
+          END_TIME=$(date +%s)
+          echo "Thời gian quét (giây): $((END_TIME - START_TIME))"
+          echo "Số lỗi tìm thấy: $(jq '.metadata.vulnerabilities.total // 0' npm-audit.json)"
+          echo "====================================="
+
+      # 4. SNYK ADVANCED (Quét sâu toàn bộ project)
+      - name: 4. Benchmark Snyk Advanced
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }} # Bắt buộc phải có token
+        run: |
+          echo "==== BẮT ĐẦU QUÉT SCA (SNYK_ADVANCED) ===="
+          START_TIME=$(date +%s)
+          
+          snyk test --all-projects --json > snyk-adv.json || true
+          
+          END_TIME=$(date +%s)
+          echo "Thời gian quét (giây): $((END_TIME - START_TIME))"
+          # Snyk có thể trả về object đơn (1 project) hoặc mảng (nhiều projects)
+          echo "Số lỗi tìm thấy: $(jq 'if type == "array" then [.[].uniqueCount] | add else .uniqueCount end' snyk-adv.json)"
+          echo "=========================================="
