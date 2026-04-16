@@ -1,12 +1,20 @@
 name: Benchmark 4 Công Cụ DAST
 
 on:
-  workflow_dispatch: # Chạy thủ công
+  workflow_dispatch: 
 
 jobs:
   benchmark_dast:
     name: Benchmark Nhóm DAST (Runtime)
     runs-on: ubuntu-latest
+    
+    # 1. THÊM KHỐI NÀY ĐỂ BẬT MONGODB TRONG GITHUB ACTIONS
+    services:
+      mongodb:
+        image: mongo:latest
+        ports:
+          - 27017:27017
+
     steps:
       - name: Lấy mã nguồn
         uses: actions/checkout@v4
@@ -16,26 +24,34 @@ jobs:
         with:
           node-version: '20'
 
-      # BƯỚC QUAN TRỌNG NHẤT CỦA DAST: KHỞI ĐỘNG SERVER
+      # 2. KHỞI ĐỘNG CÓ DATABASE VÀ BẮT LOG
       - name: Khởi động ứng dụng NodeGoat (Background)
+        env:
+          MONGODB_URI: "mongodb://localhost:27017/nodegoat"
+          PORT: 5006
         run: |
           npm install
-          # Chạy server ngầm bằng dấu & ở cuối lệnh
-          npm start &
-          echo "Đang chờ 15 giây để Server khởi động hoàn toàn trên cổng 5006..."
+          
+          echo "Đang bật Server NodeGoat..."
+          # Đẩy log của app ra file server.log để xem có lỗi không
+          npm start > server.log 2>&1 &
+          
           sleep 15
-          # Kiểm tra xem server đã lên chưa
-          curl -I http://localhost:5006 || echo "Server chưa sẵn sàng!"
+          
+          echo "==== LOG CỦA SERVER NODEGOAT ===="
+          cat server.log
+          echo "================================="
+          
+          # Nếu server chưa chạy, dừng Pipeline ngay lập tức để đỡ tốn thời gian
+          curl -I http://localhost:5006 || exit 1
 
-      # Cấp quyền để Docker (ZAP) có thể ghi file báo cáo vào thư mục hiện tại
       - name: Cấp quyền ghi thư mục
         run: chmod -R 777 .
 
-      # 1. NUCLEI FAST (Quét siêu tốc dựa trên template)
+      # 1. NUCLEI FAST
       - name: 1. Benchmark Nuclei Fast
         run: |
           echo "==== BẮT ĐẦU QUÉT DAST (NUCLEI_FAST) ===="
-          # Tải bản chạy trực tiếp (Binary) của Nuclei
           wget -q https://github.com/projectdiscovery/nuclei/releases/download/v3.1.9/nuclei_3.1.9_linux_amd64.zip
           unzip -o -q nuclei_3.1.9_linux_amd64.zip
           
@@ -47,7 +63,7 @@ jobs:
           echo "Số lỗi tìm thấy: $(wc -l < nuclei-report.jsonl || echo 0)"
           echo "=========================================="
 
-      # 2. ZAP QUICK (Quét Baseline cơ bản, không đi quá sâu)
+      # 2. ZAP QUICK
       - name: 2. Benchmark ZAP Quick (Baseline)
         run: |
           echo "==== BẮT ĐẦU QUÉT DAST (ZAP_QUICK) ===="
@@ -57,33 +73,43 @@ jobs:
           
           END_TIME=$(date +%s)
           echo "Thời gian quét (giây): $((END_TIME - START_TIME))"
-          echo "Số lỗi tìm thấy: $(jq '[.site[].alerts[].count | tonumber] | add // 0' zap-quick.json)"
+          if [ -f zap-quick.json ]; then
+            echo "Số lỗi tìm thấy: $(jq '[.site[].alerts[].count | tonumber] | add // 0' zap-quick.json)"
+          else
+            echo "Số lỗi tìm thấy: 0 (Lỗi tạo file)"
+          fi
           echo "=========================================="
 
-      # 3. ZAP AJAX SPIDER (Dùng cho ứng dụng Web hiện đại - Quét API/JS)
+      # 3. ZAP AJAX SPIDER
       - name: 3. Benchmark ZAP AJAX Spider
         run: |
           echo "==== BẮT ĐẦU QUÉT DAST (ZAP_AJAX_SPIDER) ===="
           START_TIME=$(date +%s)
           
-          # Thêm cờ -j để kích hoạt AJAX Spider, lùng sục các API ẩn
           docker run --network="host" -v $(pwd):/zap/wrk/:rw -t ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t http://localhost:5006 -j -J zap-ajax.json || true
           
           END_TIME=$(date +%s)
           echo "Thời gian quét (giây): $((END_TIME - START_TIME))"
-          echo "Số lỗi tìm thấy: $(jq '[.site[].alerts[].count | tonumber] | add // 0' zap-ajax.json)"
+          if [ -f zap-ajax.json ]; then
+            echo "Số lỗi tìm thấy: $(jq '[.site[].alerts[].count | tonumber] | add // 0' zap-ajax.json)"
+          else
+            echo "Số lỗi tìm thấy: 0 (Lỗi tạo file)"
+          fi
           echo "=========================================="
 
-      # 4. ZAP FULL (Tấn công chủ động - Tốn RẤT nhiều thời gian)
+      # 4. ZAP FULL
       - name: 4. Benchmark ZAP Full
         run: |
           echo "==== BẮT ĐẦU QUÉT DAST (ZAP_FULL) ===="
           START_TIME=$(date +%s)
           
-          # Chạy script zap-full-scan.py (Sẽ tấn công SQLi, XSS thực tế)
           docker run --network="host" -v $(pwd):/zap/wrk/:rw -t ghcr.io/zaproxy/zaproxy:stable zap-full-scan.py -t http://localhost:5006 -J zap-full.json || true
           
           END_TIME=$(date +%s)
           echo "Thời gian quét (giây): $((END_TIME - START_TIME))"
-          echo "Số lỗi tìm thấy: $(jq '[.site[].alerts[].count | tonumber] | add // 0' zap-full.json)"
+          if [ -f zap-full.json ]; then
+            echo "Số lỗi tìm thấy: $(jq '[.site[].alerts[].count | tonumber] | add // 0' zap-full.json)"
+          else
+            echo "Số lỗi tìm thấy: 0 (Lỗi tạo file)"
+          fi
           echo "=========================================="
