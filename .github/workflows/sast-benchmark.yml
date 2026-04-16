@@ -1,4 +1,4 @@
-name: Benchmark 
+name: Benchmark 4 Công Cụ SAST
 
 on:
   workflow_dispatch: # Cho phép chạy thủ công
