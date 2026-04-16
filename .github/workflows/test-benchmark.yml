@@ -15,12 +15,13 @@ jobs:
         with:
           python-version: '3.10'
           
+      # 1. SEMGREP STANDARD (Bản gốc của bạn)
       - name: Cài đặt Semgrep
         run: pip install semgrep
         
       - name: Chạy Benchmark Semgrep
         run: |
-          echo "==== BẮT ĐẦU QUÉT SAST (SEMGREP) ===="
+          echo "==== BẮT ĐẦU QUÉT SAST (SEMGREP_STANDARD) ===="
           START_TIME=$(date +%s)
           # Thêm cờ --exclude node_modules để bỏ qua thư viện bên thứ 3
           semgrep scan --config auto --exclude "node_modules" --json -o sast-report.json || true
@@ -29,22 +30,49 @@ jobs:
           echo "Số lỗi tìm thấy: $(jq '.results | length' sast-report.json)"
           echo "======================================="
 
-  benchmark_sca:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Cài đặt Trivy
+      # 2. NJSSCAN QUICK
+      - name: Cài đặt và Chạy Benchmark Njsscan
         run: |
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
-          trivy --version
-          
-      - name: Chạy Benchmark Trivy
-        run: |
-          echo "==== BẮT ĐẦU QUÉT SCA (TRIVY) ===="
+          pip install njsscan
+          echo "==== BẮT ĐẦU QUÉT SAST (NJSSCAN_QUICK) ===="
           START_TIME=$(date +%s)
-          # Xóa dấu ./ đi, chỉ gọi trivy thôi
-          trivy fs --format json --output sca-report.json . || true
+          njsscan . --sarif -o njsscan-report.sarif || true
           END_TIME=$(date +%s)
           echo "Thời gian quét (giây): $((END_TIME - START_TIME))"
-          echo "Số lỗi tìm thấy: $(jq '[.Results[]?.Vulnerabilities | length] | add // 0' sca-report.json)"
-          echo "==================================="
+          # Njsscan xuất định dạng SARIF, dùng jq đếm số lượng results trong runs
+          echo "Số lỗi tìm thấy: $(jq '.runs[0].results | length' njsscan-report.sarif)"
+          echo "======================================="
+
+      # 3. SONAR DEEP
+      - name: Chạy Benchmark Sonar Deep
+        run: |
+          echo "==== BẮT ĐẦU QUÉT SAST (SONAR_DEEP) ===="
+          START_TIME=$(date +%s)
+          # Chạy Sonar Scanner cục bộ qua Docker để đo thời gian phân tích
+          docker run --rm -v "$(pwd):/usr/src" sonarsource/sonar-scanner-cli || true
+          END_TIME=$(date +%s)
+          echo "Thời gian quét (giây): $((END_TIME - START_TIME))"
+          echo "Số lỗi tìm thấy: (Sonar CLI không xuất file JSON nội bộ khi không có Server, hãy xem log dòng INFO: Found x issues)"
+          echo "======================================="
+
+      # 4. CODEQL FULL
+      - name: Cài đặt và Chạy Benchmark CodeQL Full
+        run: |
+          echo "==== BẮT ĐẦU QUÉT SAST (CODEQL_FULL) ===="
+          START_TIME=$(date +%s)
+          # Tải CodeQL Bundle từ GitHub
+          wget -q https://github.com/github/codeql-action/releases/latest/download/codeql-bundle-linux64.tar.gz
+          tar -xzf codeql-bundle-linux64.tar.gz
+          
+          # Tạo database cho ngôn ngữ Javascript và phân tích bằng bộ luật bảo mật mở rộng
+          ./codeql/codeql database create codeql-db --language=javascript || true
+          ./codeql/codeql database analyze codeql-db javascript-security-extended.qls --format=sarif-latest --output=codeql-report.sarif || true
+          
+          END_TIME=$(date +%s)
+          echo "Thời gian quét (giây): $((END_TIME - START_TIME))"
+          if [ -f codeql-report.sarif ]; then
+            echo "Số lỗi tìm thấy: $(jq '[.runs[0].results | length] | add // 0' codeql-report.sarif)"
+          else
+            echo "Số lỗi tìm thấy: 0"
+          fi
+          echo "======================================="
