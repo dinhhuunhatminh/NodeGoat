@@ -1,4 +1,4 @@
-name: Benchmark 4 Công Cụ SAST
+name: Benchmark 7 Công Cụ SAST
 
 on:
   workflow_dispatch: # Cho phép chạy thủ công
@@ -10,10 +10,13 @@ jobs:
       - name: Lấy mã nguồn
         uses: actions/checkout@v4
       
-      - name: Setup Python
+      - name: Setup Python & Node.js
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
           
       # 1. SEMGREP STANDARD 
       - name: Cài đặt Semgrep
@@ -23,11 +26,10 @@ jobs:
         run: |
           echo "==== BẮT ĐẦU QUÉT SAST (SEMGREP_STANDARD) ===="
           START_TIME=$(date +%s)
-          # Thêm cờ --exclude node_modules để bỏ qua thư viện bên thứ 3
           semgrep scan --config auto --exclude "node_modules" --json -o sast-report.json || true
           END_TIME=$(date +%s)
           echo "Thời gian quét (giây): $((END_TIME - START_TIME))"
-          echo "Số lỗi tìm thấy: $(jq '.results | length' sast-report.json)"
+          echo "Số lỗi tìm thấy: $(jq '.results | length' sast-report.json 2>/dev/null || echo 0)"
           echo "======================================="
 
       # 2. NJSSCAN QUICK
@@ -39,8 +41,7 @@ jobs:
           njsscan . --sarif -o njsscan-report.sarif || true
           END_TIME=$(date +%s)
           echo "Thời gian quét (giây): $((END_TIME - START_TIME))"
-          # Njsscan xuất định dạng SARIF, dùng jq đếm số lượng results trong runs
-          echo "Số lỗi tìm thấy: $(jq '.runs[0].results | length' njsscan-report.sarif)"
+          echo "Số lỗi tìm thấy: $(jq '[.runs[0].results[]? | select(.level == "error")] | length' njsscan-report.sarif 2>/dev/null || echo 0)"
           echo "======================================="
 
       # 3. SONAR DEEP
@@ -48,11 +49,10 @@ jobs:
         run: |
           echo "==== BẮT ĐẦU QUÉT SAST (SONAR_DEEP) ===="
           START_TIME=$(date +%s)
-          # Chạy Sonar Scanner cục bộ qua Docker để đo thời gian phân tích
           docker run --rm -v "$(pwd):/usr/src" sonarsource/sonar-scanner-cli || true
           END_TIME=$(date +%s)
           echo "Thời gian quét (giây): $((END_TIME - START_TIME))"
-          echo "Số lỗi tìm thấy: (Sonar CLI không xuất file JSON nội bộ khi không có Server, hãy xem log dòng INFO: Found x issues)"
+          echo "Số lỗi tìm thấy: (Sonar CLI không xuất file JSON nội bộ)"
           echo "======================================="
 
       # 4. CODEQL FULL
@@ -60,18 +60,77 @@ jobs:
         run: |
           echo "==== BẮT ĐẦU QUÉT SAST (CODEQL_FULL) ===="
           START_TIME=$(date +%s)
-          # Tải CodeQL Bundle từ GitHub
           wget -q https://github.com/github/codeql-action/releases/latest/download/codeql-bundle-linux64.tar.gz
           tar -xzf codeql-bundle-linux64.tar.gz
-          
-          # Tạo database cho ngôn ngữ Javascript và phân tích bằng bộ luật bảo mật mở rộng
           ./codeql/codeql database create codeql-db --language=javascript || true
           ./codeql/codeql database analyze codeql-db javascript-security-extended.qls --format=sarif-latest --output=codeql-report.sarif || true
-          
           END_TIME=$(date +%s)
           echo "Thời gian quét (giây): $((END_TIME - START_TIME))"
-          if [ -f codeql-report.sarif ]; then
-            echo "Số lỗi tìm thấy: $(jq '[.runs[0].results | length] | add // 0' codeql-report.sarif)"
+          if [ -s codeql-report.sarif ]; then
+            echo "Số lỗi tìm thấy: $(jq '[.runs[0].results[]? | select(.level == "error")] | length' codeql-report.sarif 2>/dev/null || echo 0)"
+          else
+            echo "Số lỗi tìm thấy: 0"
+          fi
+          echo "======================================="
+
+      # ================== CÁC CÔNG CỤ MỚI BỔ SUNG ==================
+
+      # 5. GITLEAKS (QUÉT LỘ LỌT MẬT KHẨU/TOKEN)
+      - name: Cài đặt và Chạy Benchmark Gitleaks
+        run: |
+          echo "==== BẮT ĐẦU QUÉT SAST (GITLEAKS_FAST) ===="
+          wget -q https://github.com/gitleaks/gitleaks/releases/download/v8.18.2/gitleaks_8.18.2_linux_x64.tar.gz
+          tar -xzf gitleaks_8.18.2_linux_x64.tar.gz
+          
+          START_TIME=$(date +%s)
+          # Gitleaks quét toàn bộ code, xuất file JSON
+          ./gitleaks detect --source . -v --report-format json --report-path gitleaks-report.json >/dev/null 2>&1 || true
+          END_TIME=$(date +%s)
+          
+          echo "Thời gian quét (giây): $((END_TIME - START_TIME))"
+          if [ -s gitleaks-report.json ]; then
+            # File của Gitleaks là một mảng object, đếm số lượng phần tử
+            echo "Số lỗi tìm thấy: $(jq 'length' gitleaks-report.json 2>/dev/null || echo 0)"
+          else
+            echo "Số lỗi tìm thấy: 0"
+          fi
+          echo "======================================="
+
+      # 6. BEARER (SAST CHUYÊN SÂU DATA FLOW)
+      - name: Cài đặt và Chạy Benchmark Bearer
+        run: |
+          echo "==== BẮT ĐẦU QUÉT SAST (BEARER_DEEP) ===="
+          curl -sL https://raw.githubusercontent.com/Bearer/bearer/main/contrib/install.sh | sh >/dev/null 2>&1
+          
+          START_TIME=$(date +%s)
+          ./bin/bearer scan . --format json --output bearer-report.json >/dev/null 2>&1 || true
+          END_TIME=$(date +%s)
+          
+          echo "Thời gian quét (giây): $((END_TIME - START_TIME))"
+          if [ -s bearer-report.json ]; then
+            # Bearer gom các lỗi vào mảng 'vulnerabilities'
+            echo "Số lỗi tìm thấy: $(jq '.vulnerabilities | length' bearer-report.json 2>/dev/null || echo 0)"
+          else
+            echo "Số lỗi tìm thấy: 0"
+          fi
+          echo "======================================="
+
+      # 7. ESLINT + SECURITY PLUGIN (SAST SIÊU NHẸ)
+      - name: Cài đặt và Chạy Benchmark ESLint Security
+        run: |
+          echo "==== BẮT ĐẦU QUÉT SAST (ESLINT_SECURITY) ===="
+          npm install -g eslint eslint-plugin-security >/dev/null 2>&1 || true
+          # Ghi đè file config để ép xài luật security
+          echo '{"plugins":["security"],"extends":["plugin:security/recommended"]}' > .eslintrc.json
+          
+          START_TIME=$(date +%s)
+          npx eslint . --ext .js --format json -o eslint-report.json >/dev/null 2>&1 || true
+          END_TIME=$(date +%s)
+          
+          echo "Thời gian quét (giây): $((END_TIME - START_TIME))"
+          if [ -s eslint-report.json ]; then
+            # Đếm tổng errorCount và warningCount ở tất cả các file
+            echo "Số lỗi tìm thấy: $(jq '[.[].errorCount + .[].warningCount] | add // 0' eslint-report.json 2>/dev/null || echo 0)"
           else
             echo "Số lỗi tìm thấy: 0"
           fi
