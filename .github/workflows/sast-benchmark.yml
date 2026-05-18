@@ -15,7 +15,7 @@ jobs:
         with:
           python-version: '3.10'
           
-      # 1. SEMGREP STANDARD (Bản gốc của bạn)
+      # 1. SEMGREP STANDARD 
       - name: Cài đặt Semgrep
         run: pip install semgrep
         
