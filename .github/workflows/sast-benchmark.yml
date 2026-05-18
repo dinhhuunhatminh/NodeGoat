@@ -18,60 +18,60 @@ jobs:
         with:
           node-version: '20'
           
-      # 1. SEMGREP STANDARD 
-      - name: Cài đặt Semgrep
-        run: pip install semgrep
+      # # 1. SEMGREP STANDARD 
+      # - name: Cài đặt Semgrep
+      #   run: pip install semgrep
         
-      - name: Chạy Benchmark Semgrep
-        run: |
-          echo "==== BẮT ĐẦU QUÉT SAST (SEMGREP_STANDARD) ===="
-          START_TIME=$(date +%s)
-          semgrep scan --config auto --exclude "node_modules" --json -o sast-report.json || true
-          END_TIME=$(date +%s)
-          echo "Thời gian quét (giây): $((END_TIME - START_TIME))"
-          echo "Số lỗi tìm thấy: $(jq '.results | length' sast-report.json 2>/dev/null || echo 0)"
-          echo "======================================="
+      # - name: Chạy Benchmark Semgrep
+      #   run: |
+      #     echo "==== BẮT ĐẦU QUÉT SAST (SEMGREP_STANDARD) ===="
+      #     START_TIME=$(date +%s)
+      #     semgrep scan --config auto --exclude "node_modules" --json -o sast-report.json || true
+      #     END_TIME=$(date +%s)
+      #     echo "Thời gian quét (giây): $((END_TIME - START_TIME))"
+      #     echo "Số lỗi tìm thấy: $(jq '.results | length' sast-report.json 2>/dev/null || echo 0)"
+      #     echo "======================================="
 
-      # 2. NJSSCAN QUICK
-      - name: Cài đặt và Chạy Benchmark Njsscan
-        run: |
-          pip install njsscan
-          echo "==== BẮT ĐẦU QUÉT SAST (NJSSCAN_QUICK) ===="
-          START_TIME=$(date +%s)
-          njsscan . --sarif -o njsscan-report.sarif || true
-          END_TIME=$(date +%s)
-          echo "Thời gian quét (giây): $((END_TIME - START_TIME))"
-          echo "Số lỗi tìm thấy: $(jq '[.runs[0].results[]? | select(.level == "error")] | length' njsscan-report.sarif 2>/dev/null || echo 0)"
-          echo "======================================="
+      # # 2. NJSSCAN QUICK
+      # - name: Cài đặt và Chạy Benchmark Njsscan
+      #   run: |
+      #     pip install njsscan
+      #     echo "==== BẮT ĐẦU QUÉT SAST (NJSSCAN_QUICK) ===="
+      #     START_TIME=$(date +%s)
+      #     njsscan . --sarif -o njsscan-report.sarif || true
+      #     END_TIME=$(date +%s)
+      #     echo "Thời gian quét (giây): $((END_TIME - START_TIME))"
+      #     echo "Số lỗi tìm thấy: $(jq '[.runs[0].results[]? | select(.level == "error")] | length' njsscan-report.sarif 2>/dev/null || echo 0)"
+      #     echo "======================================="
 
-      # 3. SONAR DEEP
-      - name: Chạy Benchmark Sonar Deep
-        run: |
-          echo "==== BẮT ĐẦU QUÉT SAST (SONAR_DEEP) ===="
-          START_TIME=$(date +%s)
-          docker run --rm -v "$(pwd):/usr/src" sonarsource/sonar-scanner-cli || true
-          END_TIME=$(date +%s)
-          echo "Thời gian quét (giây): $((END_TIME - START_TIME))"
-          echo "Số lỗi tìm thấy: (Sonar CLI không xuất file JSON nội bộ)"
-          echo "======================================="
+      # # 3. SONAR DEEP
+      # - name: Chạy Benchmark Sonar Deep
+      #   run: |
+      #     echo "==== BẮT ĐẦU QUÉT SAST (SONAR_DEEP) ===="
+      #     START_TIME=$(date +%s)
+      #     docker run --rm -v "$(pwd):/usr/src" sonarsource/sonar-scanner-cli || true
+      #     END_TIME=$(date +%s)
+      #     echo "Thời gian quét (giây): $((END_TIME - START_TIME))"
+      #     echo "Số lỗi tìm thấy: (Sonar CLI không xuất file JSON nội bộ)"
+      #     echo "======================================="
 
-      # 4. CODEQL FULL
-      - name: Cài đặt và Chạy Benchmark CodeQL Full
-        run: |
-          echo "==== BẮT ĐẦU QUÉT SAST (CODEQL_FULL) ===="
-          START_TIME=$(date +%s)
-          wget -q https://github.com/github/codeql-action/releases/latest/download/codeql-bundle-linux64.tar.gz
-          tar -xzf codeql-bundle-linux64.tar.gz
-          ./codeql/codeql database create codeql-db --language=javascript || true
-          ./codeql/codeql database analyze codeql-db javascript-security-extended.qls --format=sarif-latest --output=codeql-report.sarif || true
-          END_TIME=$(date +%s)
-          echo "Thời gian quét (giây): $((END_TIME - START_TIME))"
-          if [ -s codeql-report.sarif ]; then
-            echo "Số lỗi tìm thấy: $(jq '[.runs[0].results[]? | select(.level == "error")] | length' codeql-report.sarif 2>/dev/null || echo 0)"
-          else
-            echo "Số lỗi tìm thấy: 0"
-          fi
-          echo "======================================="
+      # # 4. CODEQL FULL
+      # - name: Cài đặt và Chạy Benchmark CodeQL Full
+      #   run: |
+      #     echo "==== BẮT ĐẦU QUÉT SAST (CODEQL_FULL) ===="
+      #     START_TIME=$(date +%s)
+      #     wget -q https://github.com/github/codeql-action/releases/latest/download/codeql-bundle-linux64.tar.gz
+      #     tar -xzf codeql-bundle-linux64.tar.gz
+      #     ./codeql/codeql database create codeql-db --language=javascript || true
+      #     ./codeql/codeql database analyze codeql-db javascript-security-extended.qls --format=sarif-latest --output=codeql-report.sarif || true
+      #     END_TIME=$(date +%s)
+      #     echo "Thời gian quét (giây): $((END_TIME - START_TIME))"
+      #     if [ -s codeql-report.sarif ]; then
+      #       echo "Số lỗi tìm thấy: $(jq '[.runs[0].results[]? | select(.level == "error")] | length' codeql-report.sarif 2>/dev/null || echo 0)"
+      #     else
+      #       echo "Số lỗi tìm thấy: 0"
+      #     fi
+      #     echo "======================================="
 
       # ================== CÁC CÔNG CỤ MỚI BỔ SUNG ==================
 
